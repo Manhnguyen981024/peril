@@ -43,6 +43,23 @@ func main() {
 		log.Fatalf("Error when subcribe a message %v", errSub)
 	}
 
+	channel, err := conn.Channel()
+	if err != nil {
+		log.Fatalf("Error when creating a channel: %v", err)
+	}
+
+	errSubMove := pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilTopic,
+		routing.ArmyMovesPrefix+"."+username,
+		routing.ArmyMovesPrefix+".*",
+		pubsub.TransientType,
+		handlerMove(game, channel),
+	)
+	if errSubMove != nil {
+		log.Fatalf("Error when subcribe a exchange topic a message %v", errSubMove)
+	}
+
 	for {
 		words := gamelogic.GetInput()
 		cmd := words[0]
@@ -54,10 +71,16 @@ func main() {
 				log.Println(err)
 			}
 		case "move":
-			_, err := game.CommandMove(words)
+			armyMove, err := game.CommandMove(words)
 			if err != nil {
 				log.Println(err)
 			}
+			pubsub.PublishJSON(
+				channel,
+				routing.ExchangePerilTopic,
+				routing.ArmyMovesPrefix+"."+username,
+				armyMove,
+			)
 		case "status":
 			game.CommandStatus()
 		case "help":
