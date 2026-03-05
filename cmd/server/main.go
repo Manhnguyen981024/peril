@@ -23,32 +23,23 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// errPublish := pubsub.PublishJSON(
-	// 	channel,
-	// 	routing.ExchangePerilDirect,
-	// 	routing.PauseKey,
-	// 	routing.PlayingState{IsPaused: true},
-	// )
-
-	// if errPublish != nil {
-	// 	log.Fatal(errPublish)
-	// }
-
 	defer conn.Close()
 	fmt.Println("The connection was successful.")
 
 	gamelogic.PrintServerHelp()
 
-	_, _, errDeclare := pubsub.DeclareAndBind(
+	errSub := pubsub.SubscribeGob(
 		conn,
 		routing.ExchangePerilTopic,
 		routing.GameLogSlug,
 		routing.GameLogSlug+".*",
 		pubsub.DurableType,
+		handlerGameLog(),
 	)
-	if errDeclare != nil {
-		log.Fatalf("Error to bind the exchange: %v", errDeclare)
+	if errSub != nil {
+		log.Fatalf("Error when subscribe a message %v", errSub)
 	}
+
 	for {
 		words := gamelogic.GetInput()
 		if len(words) == 0 {
@@ -82,5 +73,16 @@ func main() {
 		if errPublish != nil {
 			log.Fatal(errPublish)
 		}
+	}
+}
+func handlerGameLog() func(routing.GameLog) pubsub.AckType {
+	defer fmt.Print("> ")
+	return func(gamelog routing.GameLog) pubsub.AckType {
+		err := gamelogic.WriteLog(gamelog)
+		if err != nil {
+			fmt.Printf("Error when writing game log: %v", err)
+			return pubsub.NackRequeue
+		}
+		return pubsub.Ack
 	}
 }

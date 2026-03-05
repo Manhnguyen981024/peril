@@ -29,8 +29,14 @@ func main() {
 	}
 
 	game := gamelogic.NewGameState(username)
+	channel, err := conn.Channel()
 
-	errSub := pubsub.SubscribeJSON(
+	if err != nil {
+		log.Fatalf("Error when creating a channel: %v", err)
+	}
+
+	// subscribe to pause actions
+	errSubPause := pubsub.SubscribeJSON(
 		conn,
 		routing.ExchangePerilDirect,
 		routing.PauseKey+"."+username,
@@ -39,15 +45,25 @@ func main() {
 		handlerPause(game),
 	)
 
-	if errSub != nil {
-		log.Fatalf("Error when subcribe a message %v", errSub)
+	if errSubPause != nil {
+		log.Fatalf("Error when subcribe a message %v", errSubPause)
 	}
 
-	channel, err := conn.Channel()
-	if err != nil {
-		log.Fatalf("Error when creating a channel: %v", err)
+	// subscribe to war actions
+	errSubWar := pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilTopic,
+		"war",
+		routing.WarRecognitionsPrefix+".*",
+		pubsub.DurableType,
+		handlerWar(game, channel),
+	)
+
+	if errSubWar != nil {
+		log.Fatalf("Error when subcribe a message %v", errSubWar)
 	}
 
+	// subscribe to move actions
 	errSubMove := pubsub.SubscribeJSON(
 		conn,
 		routing.ExchangePerilTopic,
@@ -56,6 +72,7 @@ func main() {
 		pubsub.TransientType,
 		handlerMove(game, channel),
 	)
+
 	if errSubMove != nil {
 		log.Fatalf("Error when subcribe a exchange topic a message %v", errSubMove)
 	}

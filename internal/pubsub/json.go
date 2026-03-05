@@ -1,7 +1,9 @@
 package pubsub
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"encoding/json"
 	"log"
 
@@ -82,6 +84,77 @@ func SubscribeJSON[T any](
 	queueType SimpleQueueType,
 	handler func(T) AckType,
 ) error {
+	err := subscribe(conn, exchange, queueName, key, queueType, handler, func(data []byte) (T, error) {
+		var val T
+		err := json.Unmarshal(data, &val)
+		if err != nil {
+			log.Printf("Error when unmarshal the data: %v", err)
+		}
+		return val, err
+	})
+	if err != nil {
+		log.Printf("Error when subscribe json: %v", err)
+		return err
+	}
+	return nil
+}
+
+func PublishGob[T any](ch *amqp.Channel, exchange, key string, val T) error {
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	err := enc.Encode(val)
+	if err != nil {
+		return err
+	}
+
+	errPub := ch.PublishWithContext(
+		context.Background(),
+		exchange,
+		key,
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "application/gob",
+			Body:        buf.Bytes(),
+		},
+	)
+	if errPub != nil {
+		return errPub
+	}
+	return nil
+}
+
+func SubscribeGob[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	queueType SimpleQueueType,
+	handler func(T) AckType,
+) error {
+	err := subscribe(conn, exchange, queueName, key, queueType, handler, func(data []byte) (T, error) {
+		var val T
+		buf := bytes.NewBuffer(data)
+		dec := gob.NewDecoder(buf)
+		err := dec.Decode(&val)
+		return val, err
+	})
+	if err != nil {
+		log.Printf("Error when subscribe gob: %v", err)
+		return err
+	}
+	return nil
+}
+
+func subscribe[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	queueType SimpleQueueType,
+	handler func(T) AckType,
+	decodeFunc func([]byte) (T, error),
+) error {
 	channel, queue, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
 	if err != nil {
 		log.Println("Error when binding the queue")
@@ -98,7 +171,10 @@ func SubscribeJSON[T any](
 	go func() {
 		for delivery := range chanDeliver {
 			var data T
-			json.Unmarshal(delivery.Body, &data)
+			data, err := decodeFunc(delivery.Body)
+			if err != nil {
+				log.Fatal("Error when decodeFunc the data")
+			}
 			acktype := handler(data)
 			switch acktype {
 			case Ack:
@@ -110,6 +186,5 @@ func SubscribeJSON[T any](
 			}
 		}
 	}()
-
 	return nil
 }
