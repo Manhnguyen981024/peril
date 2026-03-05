@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
@@ -103,7 +104,17 @@ func main() {
 		case "help":
 			gamelogic.PrintClientHelp()
 		case "spam":
-			log.Println("Spamming not allowed yet!")
+			num, err := strconv.Atoi(words[1])
+			if err != nil {
+				log.Fatal(err)
+			}
+			for i := 0; i < num; i++ {
+				maliciousLog := gamelogic.GetMaliciousLog()
+				err := publishGameLog(game, channel, maliciousLog)
+				if err != nil {
+					log.Printf("Error when publish malicious log: %v", err)
+				}
+			}
 		case "quit":
 			gamelogic.PrintQuit()
 			os.Exit(0)

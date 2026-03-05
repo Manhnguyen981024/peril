@@ -161,6 +161,12 @@ func subscribe[T any](
 		return err
 	}
 
+	errPreFetch := channel.Qos(10, 0, false)
+	if errPreFetch != nil {
+		log.Println("Error when set prefetch")
+		return errPreFetch
+	}
+
 	chanDeliver, err := channel.Consume(queue.Name, "", false, false, false, false, nil)
 	if err != nil {
 		log.Println("Error when consuming the queue")
